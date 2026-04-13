@@ -66,10 +66,8 @@ Given the breadth of the problem (data modelling, polyglot storage, API contract
 | [`docs/part2-storage-indexing.md`](docs/part2-storage-indexing.md) | Storage strategy, ClickHouse schemas, ES index schemas (per-partition, thin documents), ILM, Kafka topic design, caching layer, consistency model |
 | [`docs/part3-api-contracts.md`](docs/part3-api-contracts.md) | Full CRUD API, activity/timeline API, automation triggers, scoring rules, bulk operations, query/filter model, ID-only search pattern, data export, versioning, idempotency |
 | [`docs/part4-reliability-essay.md`](docs/part4-reliability-essay.md) | Performance budgets, tenant isolation, cell migration runbook, DR/backup, GDPR/compliance, observability, AI/ML integration, capacity estimation, data import/export, migration safety, testing strategy |
-| [`diagrams/erd.mermaid`](diagrams/erd.mermaid) | Entity-relationship diagram (Mermaid) |
-| [`diagrams/architecture.mermaid`](diagrams/architecture.mermaid) | High-level system overview — all services and primary data flows |
-| [`diagrams/write-path.mermaid`](diagrams/write-path.mermaid) | Write path: API request through CDC pipeline to per-partition ES indexes and ClickHouse |
-| [`diagrams/read-path.mermaid`](diagrams/read-path.mermaid) | Read path: decision tree routing, ES ID-only search → Postgres enrichment |
-| [`diagrams/background-jobs.mermaid`](diagrams/background-jobs.mermaid) | Background workers: index sync, automations, dedup, purge, ML, drift |
+| [`diagrams/erd.mermaid`](diagrams/erd.mermaid) / [`erd.png`](diagrams/erd.png) | Entity-relationship diagram |
+| [`diagrams/architecture.mermaid`](diagrams/architecture.mermaid) / [`architecture.png`](diagrams/architecture.png) | High-level system overview — all services and primary data flows |
+| [`diagrams/background-jobs.mermaid`](diagrams/background-jobs.mermaid) / [`background-jobs.png`](diagrams/background-jobs.png) | Background workers: index sync, automations, dedup, purge, ML, drift |
 | [`snippets/types.ts`](snippets/types.ts) | TypeScript interfaces for all API contracts (CRUD, batch, export/import, activities, automation, webhooks, scoring) |
 | [`snippets/schema.sql`](snippets/schema.sql) | Complete DDL with UUID v7, triggers, RLS, partitions, scoring rules, automation rules, webhook subscriptions |
