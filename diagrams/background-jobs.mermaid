@@ -1,0 +1,100 @@
+flowchart TB
+    subgraph CDC[CDC from Kafka]
+        KFK[Kafka Topics\ncdc.crm.*]
+    end
+
+    subgraph TenantSvc[Tenant Service Cache]
+        RD[(Redis Cache\npartition_number\nscoring_rules\nautomation_rules)]
+    end
+
+    subgraph SearchService[Search Service — Kafka Consumers]
+        ESW[ES Index Worker\nDirect: build thin doc\nCascade: partial update\npartition_number from\nTenant Service cache\n→ crm_contacts_pNN]
+        CSW[Cascade Worker\nCompany rename → update\ncompany_names on linked contacts]
+        ESW -->|bulk upsert| ES[(Elasticsearch\ncrm_contacts_p00..p63)]
+        CSW -->|partial updates| ESW
+    end
+
+    subgraph AnalyticsService[Analytics Service — Kafka Consumer]
+        CHW[CH Loader\nBatch: 1000 events or 5s]
+        CHW -->|batch insert| CH[(ClickHouse)]
+    end
+
+    subgraph AutomationService[Automation Service — Kafka Consumer]
+        ATE[Trigger Evaluator\nField-change + Activity triggers\nSnapshot semantics\n2s target]
+        AQ[Action Queue]
+        ATE -->|matched rule| AQ
+        AQ -->|create activity| CRM_INT[Core CRM Service\nPOST /internal/crm/...]
+        AQ -->|send email| EM[Email Service]
+        AQ -->|trigger webhook| WH_INT[Webhook Service\nPOST /internal/webhooks/deliver]
+    end
+
+    subgraph WebhookService[Webhook Service — Kafka Consumer]
+        WHC[Event Matcher\nMatch CDC events to subscriptions]
+        WHD[Delivery Worker\nHTTP POST + retry\nCircuit breaker]
+        WHC --> WHD --> EXT[External Endpoints]
+    end
+
+    subgraph DedupService[Dedup Service — Kafka Consumer + Scheduled]
+        DDP[On-Ingestion Check\ncontact.created → trigram match]
+        DDP_W[Weekly Full Scan\nAll active contacts per tenant]
+    end
+
+    subgraph ScheduledJobs[Scheduled Jobs — Core CRM Service]
+        PRG[Hard Purge Worker\n90-day cleanup + GDPR]
+        DFT[Drift Reconciler\n10K samples/hour\nCompare PG ↔ ES]
+        SCR[Score Recompute\nTriggered on rule change\nBatch update custom_score]
+    end
+
+    subgraph ImportExportService[Import/Export Service — Workers]
+        EXP[Export Worker\nAsync bulk exports → S3]
+        IMP[Import Worker\nParse CSV → batch write\nvia Core CRM Service]
+        MLB[ML Batch Pipeline\nNightly features from CH]
+    end
+
+    subgraph DataStores[Data Stores]
+        PG[(PostgreSQL)]
+        S3[(S3)]
+    end
+
+    KFK --> ESW
+    KFK --> CSW
+    KFK --> CHW
+    KFK --> ATE
+    KFK --> WHC
+    KFK --> DDP
+
+    ESW <-->|partition_number| RD
+    CSW <-->|partition_number| RD
+    ATE <-->|automation_rules| RD
+    SCR <-->|scoring_rules| RD
+
+    CSW -->|lookup relations| PG
+    ESW -->|read for thin doc| PG
+    DDP -->|trigram match| PG
+    DDP_W -->|batch scan| PG
+    PRG -->|delete rows| PG
+    PRG -->|remove docs| ES
+    PRG -->|delete rows| CH
+    DFT -->|compare| PG
+    DFT -->|verify| ES
+    SCR -->|batch update| PG
+    EXP -->|read replica| PG
+    EXP -->|upload| S3
+    IMP -->|batch write via| CRM_INT
+    MLB -->|read| CH
+
+    classDef primary fill:#3B82F6,stroke:#1E40AF,color:#fff,stroke-width:2px
+    classDef search fill:#F59E0B,stroke:#B45309,color:#fff,stroke-width:2px
+    classDef analytics fill:#8B5CF6,stroke:#5B21B6,color:#fff,stroke-width:2px
+    classDef stream fill:#10B981,stroke:#047857,color:#fff,stroke-width:2px
+    classDef service fill:#06B6D4,stroke:#0E7490,color:#fff,stroke-width:2px
+    classDef async fill:#14B8A6,stroke:#0F766E,color:#fff,stroke-width:2px
+    classDef ext fill:#6B7280,stroke:#374151,color:#fff,stroke-width:2px
+
+    class PG primary
+    class ES search
+    class CH analytics
+    class KFK stream
+    class ESW,CSW,CHW,ATE,AQ,WHC,WHD,DDP,DDP_W async
+    class PRG,DFT,SCR,EXP,IMP,MLB service
+    class EM,EXT,CRM_INT,WH_INT,S3 ext

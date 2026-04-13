@@ -1,0 +1,9 @@
+# Claude Code local settings
+.claude/
+
+# JetBrains IDE personal state
+.idea/workspace.xml
+.idea/*.iml
+
+# macOS
+.DS_Store

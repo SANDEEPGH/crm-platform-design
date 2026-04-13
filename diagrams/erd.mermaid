@@ -1,0 +1,271 @@
+erDiagram
+    TENANT {
+        uuid id PK
+        text name
+        text slug UK
+        text plan_tier
+        jsonb settings
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    CONTACT {
+        uuid id PK
+        uuid tenant_id FK
+        text email
+        text first_name
+        text last_name
+        text phone
+        text lifecycle_stage
+        jsonb custom_fields
+        text lifecycle_status
+        uuid merged_into_id FK
+        timestamptz created_at
+        timestamptz updated_at
+        uuid created_by
+        uuid updated_by
+        timestamptz archived_at
+        timestamptz deleted_at
+    }
+
+    COMPANY {
+        uuid id PK
+        uuid tenant_id FK
+        text name
+        text domain
+        text industry
+        int employee_count
+        numeric annual_revenue
+        jsonb custom_fields
+        text lifecycle_status
+        uuid created_by
+        uuid updated_by
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    PIPELINE {
+        uuid id PK
+        uuid tenant_id FK
+        text name
+        jsonb stages
+        boolean is_default
+        text lifecycle_status
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    OPPORTUNITY {
+        uuid id PK
+        uuid tenant_id FK
+        uuid pipeline_id FK
+        text stage_id
+        text name
+        numeric amount
+        text currency
+        date expected_close
+        smallint probability
+        uuid owner_id
+        jsonb custom_fields
+        text lifecycle_status
+        uuid created_by
+        uuid updated_by
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    CUSTOM_OBJECT_TYPE {
+        uuid id PK
+        uuid tenant_id FK
+        text slug
+        text display_name
+        text description
+        jsonb field_schema
+        text icon
+        int schema_version
+        text lifecycle_status
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    CUSTOM_OBJECT_RECORD {
+        uuid id PK
+        uuid tenant_id FK
+        uuid object_type_id FK
+        text display_name
+        jsonb data
+        text lifecycle_status
+        uuid created_by
+        uuid updated_by
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    RELATIONSHIP {
+        uuid id PK
+        uuid tenant_id FK
+        text source_type
+        uuid source_id
+        text target_type
+        uuid target_id
+        text relation_kind
+        int ordinal
+        jsonb metadata
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    CHANGE_LOG {
+        bigint id PK
+        uuid tenant_id
+        text entity_type
+        uuid entity_id
+        text action
+        jsonb changed_fields
+        uuid actor_id
+        timestamptz created_at
+    }
+
+    CUSTOM_OBJECT_TYPE_VERSION {
+        uuid id PK
+        uuid tenant_id FK
+        uuid object_type_id FK
+        int version
+        jsonb field_schema
+        jsonb migration_ops
+        uuid created_by
+        timestamptz created_at
+    }
+
+    MERGE_SUGGESTION {
+        uuid id PK
+        uuid tenant_id FK
+        uuid contact_id_a FK
+        uuid contact_id_b FK
+        numeric confidence
+        jsonb match_signals
+        text status
+        uuid resolved_by
+        timestamptz created_at
+        timestamptz resolved_at
+    }
+
+    ACTIVITY {
+        uuid id PK
+        uuid tenant_id FK
+        text entity_type
+        uuid entity_id
+        text activity_type
+        text subject
+        text body
+        jsonb details
+        text status
+        timestamptz occurred_at
+        int duration_secs
+        uuid owner_id
+        uuid created_by
+        uuid updated_by
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    SCORING_RULE {
+        uuid tenant_id PK
+        text entity_type PK
+        text label
+        text formula_type
+        jsonb formula_config
+        numeric default_value
+        boolean is_enabled
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    AUTOMATION_RULE {
+        uuid id PK
+        uuid tenant_id FK
+        text name
+        text trigger_source
+        text trigger_event
+        text entity_type
+        jsonb trigger_conditions
+        text action
+        jsonb action_params
+        boolean is_enabled
+        int execution_order
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    AUTOMATION_EXECUTION_LOG {
+        uuid id PK
+        uuid tenant_id
+        uuid rule_id FK
+        text entity_type
+        uuid entity_id
+        text execution_key UK
+        text status
+        timestamptz created_at
+        timestamptz completed_at
+    }
+
+    WEBHOOK_SUBSCRIPTION {
+        uuid id PK
+        uuid tenant_id FK
+        text url
+        text_arr events
+        text webhook_version
+        boolean is_enabled
+        text status
+        text circuit_state
+        int max_rate_per_sec
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    WEBHOOK_DELIVERY_LOG {
+        uuid id PK
+        uuid tenant_id
+        uuid subscription_id FK
+        text event_id
+        text event_type
+        int http_status
+        int attempt
+        text status
+        timestamptz created_at
+    }
+
+    TENANT ||--o{ CONTACT : "has many"
+    TENANT ||--o{ COMPANY : "has many"
+    TENANT ||--o{ PIPELINE : "has many"
+    TENANT ||--o{ OPPORTUNITY : "has many"
+    TENANT ||--o{ CUSTOM_OBJECT_TYPE : "has many"
+    TENANT ||--o{ CUSTOM_OBJECT_RECORD : "has many"
+    TENANT ||--o{ RELATIONSHIP : "has many"
+    TENANT ||--o{ CHANGE_LOG : "has many"
+
+    PIPELINE ||--o{ OPPORTUNITY : "contains"
+    CUSTOM_OBJECT_TYPE ||--o{ CUSTOM_OBJECT_RECORD : "defines"
+    CONTACT ||--o| CONTACT : "merged_into"
+
+    CONTACT }o--o{ RELATIONSHIP : "source or target"
+    COMPANY }o--o{ RELATIONSHIP : "source or target"
+    OPPORTUNITY }o--o{ RELATIONSHIP : "source or target"
+    CUSTOM_OBJECT_RECORD }o--o{ RELATIONSHIP : "source or target"
+
+    TENANT ||--o{ ACTIVITY : "has many"
+    TENANT ||--o{ CUSTOM_OBJECT_TYPE_VERSION : "has many"
+    TENANT ||--o{ MERGE_SUGGESTION : "has many"
+    CUSTOM_OBJECT_TYPE ||--o{ CUSTOM_OBJECT_TYPE_VERSION : "has versions"
+    CONTACT }o--o{ MERGE_SUGGESTION : "candidate"
+
+    CONTACT }o--o{ ACTIVITY : "timeline"
+    COMPANY }o--o{ ACTIVITY : "timeline"
+    OPPORTUNITY }o--o{ ACTIVITY : "timeline"
+    CUSTOM_OBJECT_RECORD }o--o{ ACTIVITY : "timeline"
+
+    TENANT ||--o{ SCORING_RULE : "has many"
+    TENANT ||--o{ AUTOMATION_RULE : "has many"
+    TENANT ||--o{ WEBHOOK_SUBSCRIPTION : "has many"
+    AUTOMATION_RULE ||--o{ AUTOMATION_EXECUTION_LOG : "executions"
+    WEBHOOK_SUBSCRIPTION ||--o{ WEBHOOK_DELIVERY_LOG : "deliveries"

@@ -1,0 +1,119 @@
+flowchart TB
+    UI[Web UI / Mobile] --> CR[Cell Router]
+    API_EXT[External API Clients] --> CR
+    CR --> GW[API Gateway\nAuth + Rate Limit\nResolve tenant_id + roles]
+
+    subgraph Orchestrator[CRM Gateway — Orchestrates all read/write flows]
+        ORC[CRM Gateway Service\nStep 1: Call Tenant Service\nStep 2: Route to Search or Core CRM\nStep 3: Enrich if needed\nStep 4: Post-Filter + RBAC\nStep 5: Return response]
+    end
+
+    subgraph TenantSvc[Tenant Service — owns tenant metadata, scoring rules, partition mapping]
+        TS_API[Tenant API\nGET /internal/tenant/:id\nReturns: partition_number\nplan_tier, scoring_rules\nfield_schema]
+        RD[(Redis Cache)]
+        TS_DB[(PostgreSQL\ntenants + scoring_rules)]
+        TS_API <--> RD
+        TS_API <--> TS_DB
+    end
+
+    subgraph SearchSvc[Search Service — pure ES query, no Postgres knowledge]
+        SS_API[Search API\nReceives: partition_number\n+ filters + sort + limit\nReturns: sorted IDs only]
+        ES[(Elasticsearch\n64 indexes per entity\nthin docs)]
+        ESW[ES Index Worker\nCDC → thin docs]
+        CSW[Cascade Worker\nfan-out partial updates]
+        SS_API --> ES
+        ESW --> ES
+        CSW --> ESW
+    end
+
+    subgraph CoreCRM[Core CRM Service — pure Postgres CRUD, no ES knowledge]
+        CRM_API[CRM API\nCRUD: Contacts, Companies\nOpportunities, Pipelines\nCustom Objects, Relationships\nActivities, Change Log\nEnrich: batch PK lookup]
+        CRM_DB[(PostgreSQL\n64 hash partitions\nSource of Truth)]
+        CRM_API <--> CRM_DB
+    end
+
+    subgraph AutomationSvc[Automation Service]
+        ATE[Trigger Evaluator\nCDC consumer, 2s target]
+        AQ[Action Queue]
+        ATE --> AQ
+    end
+
+    subgraph WebhookSvc[Webhook Service]
+        WH_API[Subscription API]
+        WHD[Delivery Worker\nRetry + Circuit Breaker]
+    end
+
+    subgraph AnalyticsSvc[Analytics Service]
+        AS_API[Analytics API\nDashboards, Reports]
+        CHW[CH Loader\nCDC consumer]
+        CH[(ClickHouse)]
+        AS_API --> CH
+        CHW --> CH
+    end
+
+    subgraph OtherSvc[Other Services]
+        IES[Import/Export Service]
+        DDS[Dedup Service]
+    end
+
+    KF[Kafka\nCDC topics]
+
+    %% === API Gateway routes ALL requests to CRM Gateway ===
+    GW --> ORC
+
+    %% === CRM Gateway orchestrates by calling downstream services ===
+    ORC -->|"Step 1: Get partition_number\nplan_tier, scoring_rules"| TS_API
+    ORC -->|"Step 2a: Search flow\npass partition_number\nget sorted IDs"| SS_API
+    ORC -->|"Step 2b: Write flow\nCRUD + score computation"| CRM_API
+    ORC -->|"Step 3: Enrich IDs\nbatch PK lookup"| CRM_API
+    ORC -->|"dashboards"| AS_API
+    ORC -->|"import/export"| IES
+    ORC -->|"webhook mgmt"| WH_API
+    ORC -->|"tenant CRUD"| TS_API
+
+    %% === CDC pipeline: Postgres → Kafka → async consumers ===
+    CRM_DB -->|CDC| KF
+    KF --> ESW
+    KF --> CSW
+    KF --> CHW
+    KF --> ATE
+    KF --> WHD
+    KF --> DDS
+
+    %% === Async consumers call Tenant Service for partition_number ===
+    ESW -->|"partition_number"| TS_API
+    CSW -->|"partition_number"| TS_API
+    ATE -->|"automation_rules"| TS_API
+
+    %% === Async services call Core CRM for write-back actions ===
+    AQ -->|"create activity\nupdate field"| CRM_API
+    DDS -->|"execute merge"| CRM_API
+    IES -->|"bulk writes"| CRM_API
+    WHD --> EXT[External Endpoints]
+
+    %% === Degraded mode ===
+    ORC -.->|"ES down: CRM Gateway\nfalls back to Core CRM\nfor basic list queries"| CRM_API
+
+    %% === Backups ===
+    CRM_DB -.->|backup| S3[(S3)]
+    IES -.->|export files| S3
+
+    classDef primary fill:#3B82F6,stroke:#1E40AF,color:#fff,stroke-width:2px
+    classDef search fill:#F59E0B,stroke:#B45309,color:#fff,stroke-width:2px
+    classDef analytics fill:#8B5CF6,stroke:#5B21B6,color:#fff,stroke-width:2px
+    classDef cache fill:#EF4444,stroke:#B91C1C,color:#fff,stroke-width:2px
+    classDef stream fill:#10B981,stroke:#047857,color:#fff,stroke-width:2px
+    classDef service fill:#06B6D4,stroke:#0E7490,color:#fff,stroke-width:2px
+    classDef orchestrator fill:#EC4899,stroke:#BE185D,color:#fff,stroke-width:2px
+    classDef async fill:#14B8A6,stroke:#0F766E,color:#fff,stroke-width:2px
+    classDef ext fill:#6B7280,stroke:#374151,color:#fff,stroke-width:2px
+
+    class CRM_DB,TS_DB primary
+    class ES search
+    class CH analytics
+    class RD cache
+    class KF stream
+    class TS_API,CRM_API,SS_API,AS_API,WH_API service
+    class ORC orchestrator
+    class ATE,AQ,ESW,CSW,CHW,WHD async
+    class GW,CR service
+    class S3,EXT,IES,DDS ext
